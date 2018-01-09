@@ -1,0 +1,3 @@
+[nodes]
+host1    ansible_user=ubuntu
+host2    ansible_user=ec2-user

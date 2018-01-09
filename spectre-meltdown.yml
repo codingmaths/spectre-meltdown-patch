@@ -1,0 +1,6 @@
+---
+- name:  Update latest kernel on all Linux based operating systems
+  hosts: all
+  gather_facts: yes
+  roles:
+    - aws_spectre_meltdown_patch

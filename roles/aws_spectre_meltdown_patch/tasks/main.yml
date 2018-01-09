@@ -1,0 +1,96 @@
+---
+- name: Gather Facts about EC2 instance
+  ec2_metadata_facts:
+
+- name: debug ansible_ec2_facts
+  debug:
+    var: ansible_ec2_hostname
+
+- name: get the current kernel version
+  shell: uname -r
+  become: yes
+  register: old_kernel
+
+- name: Send notification to Slack
+  slack:
+    token: "My-Slack-Token"
+    msg: "`Old Kernel`: {{ old_kernel.stdout }} on `Private-IP`: {{ ansible_ec2_local_ipv4 }} `Public-IP`: {{ ansible_ec2_public_ipv4 }}"
+    channel: "#meltdown-update"
+    icon_emoji: "computer"
+
+- name: update Centos/REdhat
+  yum: 
+    name: "*"
+    state: latest
+  when: ansible_distribution == 'CentOS' or ansible_distribution == 'Red Hat Enterprise Linux'
+  become: yes
+  register: update_out
+
+- name: Add repositories for ubuntu
+  apt_repository: 
+    repo: 'ppa:canonical-kernel-team/pti'
+    state: present
+  become: yes
+  when: ansible_distribution == 'Debian' or ansible_distribution == 'Ubuntu'
+
+- name: Install latest version of Kernel for Ubuntu
+  apt:
+    name: "*"
+    state: latest
+    install_recommends: no
+  become: yes
+  when: ansible_distribution == 'Debian' or ansible_distribution == 'Ubuntu'
+
+- name: Update all packages to the latest version for Ubuntu
+  apt:
+    upgrade: dist
+    state: latest
+    force: yes
+  become: yes
+  when: ansible_distribution == 'Debian' or ansible_distribution == 'Ubuntu'
+  register: update_out
+
+- name: update AMAZON Linux
+  yum: 
+    name: kernel
+    state: latest
+  become: yes
+  when: ansible_distribution == "Amazon"
+  register: update_out
+
+- name: "Wait after updating Kernel"
+  shell: sleep 5
+  when: "{{ update_out.changed }} == true"
+
+- name: Reboot the server for kernel update
+  shell: ( sleep 3 && /sbin/reboot & )
+  async: 0
+  poll: 0 
+  become: yes
+  when: "{{ update_out.changed }} == true"
+
+- name: "Wait after restarting service"
+  shell: sleep 100
+  when: "{{ update_out.changed }} == true"
+
+- name: get the updated kernel version
+  shell: uname -r
+  register: new_kernel
+  become: yes
+  when: "{{ update_out.changed }} == true"
+
+- name: Send notification to Slack if update == true
+  slack:
+    token: "My-Slack-Token"
+    msg: "`New Kernel`: {{ new_kernel.stdout }} on `Private-IP`: {{ ansible_ec2_local_ipv4 }} `Public-IP`: {{ ansible_ec2_public_ipv4 }}"
+    channel: "#meltdown-update"
+    icon_emoji: "computer"
+  when: "{{ update_out.changed }} == true"
+
+- name: Send notification to Slack if update == false
+  slack:
+    token: "My-Slack-Token"
+    msg: "Kernel already updated on `Private-IP`: {{ ansible_ec2_local_ipv4 }} `Public-IP`: {{ ansible_ec2_public_ipv4 }}"
+    channel: "#meltdown-update"
+    icon_emoji: "computer"
+  when: "{{ update_out.changed }} == false"
